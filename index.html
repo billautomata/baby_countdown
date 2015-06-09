@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>baby countdown</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				font-family: Monospace;
+				background-color: #000;
+				color: #fff;
+				margin: 0px;
+				overflow: hidden;
+			}
+			#info {
+				color: #fff;
+				position: absolute;
+				top: 10px;
+				width: 100%;
+				text-align: center;
+				z-index: 100;
+				display:block;
+			}
+			#info a, .button { color: #f00; font-weight: bold; text-decoration: underline; cursor: pointer }
+		</style>
+	</head>
+
+	<body>
+
+		<script src="three.min.js"></script>
+
+		<script src="DDSLoader.js"></script>
+		<script src="MTLLoader.js"></script>
+		<script src="OBJMTLLoader.js"></script>
+
+		<script src="Detector.js"></script>
+		<script src="GeometryUtils.js"></script>
+		<script src="stats.min.js"></script>
+
+		<Script src='moment.min.js'></script>
+
+		<script src='droid_sans_bold.typeface.js'></script>
+		<script src='droid_sans_regular.typeface.js'></script>
+		<script src='droid_serif_bold.typeface.js'></script>
+		<script src='droid_serif_regular.typeface.js'></script>
+		<script src='gentilis_bold.typeface.js'></script>
+		<script src='optimer_bold.typeface.js'></script>
+		<script src='optimer_regular.typeface.js'></script>
+
+
+		<script>
+
+			var group, textMesh1, textMesh2, textGeo, material;
+
+			var firstLetter = true;
+
+			var now = new moment()
+			var target_date = new moment('2015-08-18T07:30:00')
+
+			var text = "skittie bees",
+
+				height = 20,
+				size = 50,
+				hover = 30,
+
+				curveSegments = 4,
+
+				bevelThickness = 2,
+				bevelSize = 0,
+				bevelSegments = 3,
+				bevelEnabled = true,
+
+				font = "optimer", // helvetiker, optimer, gentilis, droid sans, droid serif
+				weight = "bold", // normal bold
+				style = "normal"; // normal italic
+
+			var mirror = false;
+
+			var fontMap = {
+
+				"helvetiker": 0,
+				"optimer": 1,
+				"gentilis": 2,
+				"droid sans": 3,
+				"droid serif": 4
+
+			};
+
+			var weightMap = {
+
+				"normal": 0,
+				"bold": 1
+
+			};
+
+			var container, stats;
+
+			var camera, scene, renderer;
+
+			var mouseX = 0, mouseY = 0;
+
+			var windowHalfX = window.innerWidth / 2;
+			var windowHalfY = window.innerHeight / 2;
+
+			init();
+			animate();
+
+			material = new THREE.MeshFaceMaterial( [
+				new THREE.MeshPhongMaterial( { color: 0xffffff, shading: THREE.FlatShading } ), // front
+				new THREE.MeshPhongMaterial( { color: 0xffffff, shading: THREE.SmoothShading } ) // side
+			] );
+
+			group = new THREE.Group();
+			group.position.y = 20;
+			scene.add(group)
+
+			createText()
+
+			function createText() {
+
+				var dt = target_date.diff(new moment())
+
+				var days = dt / 1000 / 60 / 60 / 24
+				// fractional counts
+				var hours = (days - Math.floor(days)) * 24
+				var minutes = (hours - Math.floor(hours)) * 60
+				var seconds = (minutes - Math.floor(minutes)) * 60
+
+				console.log(days,hours,minutes,seconds)
+				// var hours =
+
+				// var minutes = ((parseFloat(hrs) - Math.floor(hrs)))
+				// var seconds = ((minutes - Math.floor(minutes)))
+
+				// console.log(hrs,minutes,seconds)
+				// console.log(hrs - Math.floor(hrs))
+				// console.log(minutes-Math.floor(minutes))
+
+				text = Math.floor(days) + ' '
+				text += Math.floor(hours) + ' '
+				text += Math.floor(minutes) + ' '
+				text += Math.floor(seconds)
+
+				textGeo = new THREE.TextGeometry( text, {
+
+					size: size,
+					height: height,
+					curveSegments: curveSegments,
+
+					font: font,
+					weight: weight,
+					style: style,
+
+					bevelThickness: bevelThickness,
+					bevelSize: bevelSize,
+					bevelEnabled: bevelEnabled,
+
+					material: 0,
+					extrudeMaterial: 1
+
+				});
+
+				textGeo.computeBoundingBox();
+				textGeo.computeVertexNormals();
+
+				// "fix" side normals by removing z-component of normals for side faces
+				// (this doesn't work well for beveled geometry as then we lose nice curvature around z-axis)
+
+				if ( ! bevelEnabled ) {
+
+					var triangleAreaHeuristics = 0.1 * ( height * size );
+
+					for ( var i = 0; i < textGeo.faces.length; i ++ ) {
+
+						var face = textGeo.faces[ i ];
+
+						if ( face.materialIndex == 1 ) {
+
+							for ( var j = 0; j < face.vertexNormals.length; j ++ ) {
+
+								face.vertexNormals[ j ].z = 0;
+								face.vertexNormals[ j ].normalize();
+
+							}
+
+							var va = textGeo.vertices[ face.a ];
+							var vb = textGeo.vertices[ face.b ];
+							var vc = textGeo.vertices[ face.c ];
+
+							var s = THREE.GeometryUtils.triangleArea( va, vb, vc );
+
+							if ( s > triangleAreaHeuristics ) {
+
+								for ( var j = 0; j < face.vertexNormals.length; j ++ ) {
+
+									face.vertexNormals[ j ].copy( face.normal );
+
+								}
+
+							}
+
+						}
+
+					}
+
+				}
+
+				var centerOffset = -0.5 * ( textGeo.boundingBox.max.x - textGeo.boundingBox.min.x );
+
+				textMesh1 = new THREE.Mesh( textGeo, material );
+
+				textMesh1.position.x = centerOffset;
+				textMesh1.position.y = hover;
+				textMesh1.position.z = 0;
+
+				textMesh1.rotation.x = 0;
+				textMesh1.rotation.y = Math.PI * 2;
+
+				group.add( textMesh1 );
+
+				if ( mirror ) {
+
+					textMesh2 = new THREE.Mesh( textGeo, material );
+
+					textMesh2.position.x = centerOffset;
+					textMesh2.position.y = -hover;
+					textMesh2.position.z = height;
+
+					textMesh2.rotation.x = Math.PI;
+					textMesh2.rotation.y = Math.PI * 2;
+
+					group.add( textMesh2 );
+
+				}
+
+			}
+
+			setInterval(refreshText,1000)
+
+			function refreshText() {
+
+				group.remove( textMesh1 );
+				if ( mirror ) group.remove( textMesh2 );
+
+				if ( !text ) return;
+
+				createText();
+
+			}
+
+
+			function init() {
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000 );
+				camera.position.z = 400;
+
+				// scene
+
+				scene = new THREE.Scene();
+
+				var ambient = new THREE.AmbientLight( 0xaaaaaa );
+				scene.add( ambient );
+
+				var directionalLight = new THREE.DirectionalLight( 0xffffff );
+				directionalLight.position.set( 0, 0, 1 ).normalize();
+				scene.add( directionalLight );
+
+				// model
+
+				var onProgress = function ( xhr ) {
+					if ( xhr.lengthComputable ) {
+						var percentComplete = xhr.loaded / xhr.total * 100;
+						console.log( Math.round(percentComplete, 2) + '% downloaded' );
+					}
+				};
+
+				var onError = function ( xhr ) {
+				};
+
+
+				// THREE.Loader.Handlers.add( /\.dds$/i, new THREE.DDSLoader() );
+				//
+				// var loader = new THREE.OBJMTLLoader();
+				// loader.load( 'bees_tree.obj', 'bees_tree.mtl', function ( object ) {
+				//
+				// 	var scale = 60
+				// 	obj = object
+				//
+				//
+				// 	// object.rotateZ(Math.PI * 0.5)
+				// 	object.rotateX(Math.PI * 0.2)
+				// 	object.rotateY(Math.PI * -0.3)
+				//
+				// 	object.scale.set( scale, scale, scale );
+				//
+				// 	scene.add( object );
+				//
+				// }, onProgress, onError );
+
+				//
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				container.appendChild( renderer.domElement );
+
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+				document.addEventListener( 'touchmove', onDocumentMouseMove, false );
+
+				//
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+
+			function onWindowResize() {
+
+				windowHalfX = window.innerWidth / 2;
+				windowHalfY = window.innerHeight / 2;
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function onDocumentMouseMove( event ) {
+
+				event.preventDefault()
+
+				if(event.changedTouches !== undefined){
+					console.log(event)
+
+					event.clientX = event.changedTouches[0].clientX * 3
+					event.clientY = event.changedTouches[0].clientY * 3
+				}
+
+				mouseX = ( event.clientX - windowHalfX ) / 2;
+				mouseY = ( event.clientY - windowHalfY ) / 2;
+
+			}
+
+			//
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+				render();
+
+			}
+
+			function render() {
+
+				camera.position.x += ( mouseX - camera.position.x ) * .05;
+				camera.position.y += ( - mouseY - camera.position.y ) * .05;
+
+				camera.lookAt( scene.position );
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+
+	</body>
+</html>
